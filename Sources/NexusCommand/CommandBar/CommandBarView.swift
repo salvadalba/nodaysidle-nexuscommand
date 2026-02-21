@@ -109,13 +109,7 @@ struct CommandBarView: View {
                                 onDismiss()
                             }
                         }
-                        .phaseAnimator([false, true], trigger: item.id) { content, phase in
-                            content
-                                .opacity(phase ? 1 : 0)
-                                .offset(y: phase ? 0 : 8)
-                        } animation: { _ in
-                            .easeOut(duration: 0.2)
-                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 .padding(.horizontal, 8)
