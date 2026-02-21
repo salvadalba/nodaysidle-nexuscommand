@@ -190,6 +190,9 @@ final class IndexingService {
         return files
     }
 
+    /// Skip content reads for files larger than 50 MB to avoid memory pressure.
+    private nonisolated static let maxContentReadSize: Int64 = 50 * 1024 * 1024
+
     private nonisolated func extractMetadata(from url: URL) throws -> FileMetadataDTO {
         let resourceValues = try url.resourceValues(forKeys: [
             .nameKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey, .typeIdentifierKey
@@ -201,18 +204,20 @@ final class IndexingService {
         let fileSize = Int64(resourceValues.fileSize ?? 0)
         let modifiedDate = resourceValues.contentModificationDate ?? .now
 
-        // Content snippet for text files
+        // Content snippet for text files (skip large files)
         var contentSnippet: String?
-        if let utType = UTType(fileType), utType.conforms(to: .plainText) {
+        if fileSize <= Self.maxContentReadSize,
+           let utType = UTType(fileType), utType.conforms(to: .plainText) {
             if let data = try? Data(contentsOf: url, options: .mappedIfSafe),
                let text = String(data: data, encoding: .utf8) {
                 contentSnippet = String(text.prefix(500))
             }
         }
 
-        // SHA256 content hash
+        // SHA256 content hash (skip large files)
         let contentHash: String
-        if let data = try? Data(contentsOf: url, options: .mappedIfSafe) {
+        if fileSize <= Self.maxContentReadSize,
+           let data = try? Data(contentsOf: url, options: .mappedIfSafe) {
             contentHash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
         } else {
             contentHash = ""

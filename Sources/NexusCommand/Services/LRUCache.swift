@@ -21,7 +21,9 @@ final class LRUCache<Key: Hashable, Value>: @unchecked Sendable {
             return nil
         }
         hits += 1
-        order.removeAll { $0 == key }
+        if let idx = order.firstIndex(of: key) {
+            order.remove(at: idx)
+        }
         order.append(key)
         return value
     }
@@ -30,7 +32,9 @@ final class LRUCache<Key: Hashable, Value>: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if storage[key] != nil {
-            order.removeAll { $0 == key }
+            if let idx = order.firstIndex(of: key) {
+                order.remove(at: idx)
+            }
         } else if storage.count >= capacity {
             if let oldest = order.first {
                 order.removeFirst()

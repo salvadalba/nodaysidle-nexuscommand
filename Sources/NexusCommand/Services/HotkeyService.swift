@@ -10,6 +10,7 @@ final class HotkeyService {
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var carbonHotKeyRef: EventHotKeyRef?
+    private var notificationObserver: (any NSObjectProtocol)?
     private var handler: (() -> Void)?
 
     func register(hotkey: HotkeyCombo, handler: @escaping () -> Void) throws {
@@ -66,6 +67,11 @@ final class HotkeyService {
         globalMonitor = nil
         localMonitor = nil
 
+        if let notificationObserver {
+            NotificationCenter.default.removeObserver(notificationObserver)
+        }
+        notificationObserver = nil
+
         if let carbonHotKeyRef {
             UnregisterEventHotKey(carbonHotKeyRef)
         }
@@ -112,7 +118,7 @@ final class HotkeyService {
             return noErr
         }, 1, &eventType, nil, nil)
 
-        NotificationCenter.default.addObserver(forName: .nexusCarbonHotkeyPressed, object: nil, queue: .main) { [weak self] _ in
+        notificationObserver = NotificationCenter.default.addObserver(forName: .nexusCarbonHotkeyPressed, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 self?.handler?()
             }
