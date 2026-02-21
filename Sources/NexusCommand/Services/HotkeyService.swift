@@ -16,22 +16,21 @@ final class HotkeyService {
         unregister()
         self.handler = handler
 
-        guard isAccessibilityGranted() else {
-            Self.logger.error("Accessibility permission not granted for global hotkey")
-            throw HotkeyError.accessibilityNotGranted
-        }
-
-        // Try Carbon API first for reliable system-wide hotkey
+        // Try Carbon API first — does NOT require Accessibility permission
         do {
             try registerCarbonHotKey(hotkey)
             currentHotkey = hotkey
             Self.logger.info("Hotkey registered via Carbon: \(hotkey.displayString)")
             return
         } catch {
-            Self.logger.warning("Carbon hotkey registration failed, trying NSEvent monitor")
+            Self.logger.warning("Carbon hotkey failed: \(error), falling back to NSEvent monitor")
         }
 
-        // Fallback to NSEvent global monitor
+        // Fallback: NSEvent global monitor (needs Accessibility permission)
+        if !isAccessibilityGranted() {
+            Self.logger.warning("Accessibility not granted — global monitor may not receive events")
+        }
+
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             Task { @MainActor in
                 guard let self else { return }
