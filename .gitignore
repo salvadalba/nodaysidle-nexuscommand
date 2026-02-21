@@ -1,0 +1,26 @@
+# Build artifacts
+.build/
+*.o
+*.d
+*.dia
+*.swp
+
+# App bundle (built, not source)
+NexusCommand.app/
+*.dmg
+
+# macOS system
+.DS_Store
+**/.DS_Store
+
+# Icon intermediate files
+Sources/NexusCommand/Resources/Icon.iconset/
+
+# Claude Code
+.claude/
+
+# Xcode (not used, but just in case)
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/

@@ -1,0 +1,91 @@
+name: NexusCommand CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Show Swift version
+        run: swift --version
+
+      # Enforce no URLSession in core service modules
+      - name: Check for forbidden URLSession imports
+        run: |
+          if grep -r "import.*URLSession\|URLSession\." Sources/NexusCommand/Services/ 2>/dev/null; then
+            echo "ERROR: URLSession found in core service modules!"
+            exit 1
+          fi
+          echo "No URLSession imports found in core services."
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Run unit tests
+        run: swift test --parallel
+
+      - name: Package app bundle
+        run: |
+          chmod +x Scripts/package_app.sh
+          SIGNING_MODE=adhoc Scripts/package_app.sh release
+
+      - name: Verify app bundle
+        run: |
+          test -d NexusCommand.app
+          codesign --verify NexusCommand.app
+          echo "App bundle verified."
+
+      # Code signing and notarization (only on main branch with secrets)
+      - name: Sign with Developer ID
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          APP_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [[ -n "$APP_IDENTITY" ]]; then
+            codesign --force --timestamp --options runtime \
+              --sign "$APP_IDENTITY" \
+              --entitlements NexusCommand.entitlements \
+              NexusCommand.app
+          fi
+
+      - name: Notarize
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [[ -n "${APPLE_ID:-}" ]]; then
+            ditto -c -k --keepParent NexusCommand.app NexusCommand.zip
+            xcrun notarytool submit NexusCommand.zip \
+              --apple-id "$APPLE_ID" \
+              --team-id "$TEAM_ID" \
+              --keychain-profile "notarization" \
+              --wait || echo "Notarization skipped (no credentials)"
+            xcrun stapler staple NexusCommand.app || true
+          fi
+
+      - name: Build DMG
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          chmod +x Scripts/build-dmg.sh
+          Scripts/build-dmg.sh release
+
+      - name: Upload DMG artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: NexusCommand.dmg
+          path: NexusCommand.dmg
+          if-no-files-found: warn
