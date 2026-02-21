@@ -79,6 +79,34 @@ final class CommandBarViewModel {
         guard let item = results[safe: selectedIndex] else { return }
         shouldDismissAfterExecution = false
 
+        // Calculate: show result inline instead of dismissing
+        if item.action == .calculate {
+            Task {
+                let intent = ParsedIntent(action: item.action, parameters: item.parameters, confidence: item.relevanceScore)
+                do {
+                    let result = try await actionService?.execute(intent: intent)
+                    if let result, result.success, let output = result.output {
+                        // Replace the result row with the answer
+                        let answerItem = SearchResultItem(
+                            id: UUID(),
+                            title: output,
+                            subtitle: "Calculated — press Enter to copy",
+                            icon: "function",
+                            action: .runShellCommand,
+                            parameters: ["command": "echo '\(output.components(separatedBy: " = ").last ?? output)' | pbcopy"],
+                            relevanceScore: 1.0,
+                            source: .intentParsing
+                        )
+                        results = [answerItem]
+                        selectedIndex = 0
+                    }
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            return
+        }
+
         Task {
             let intent = ParsedIntent(
                 action: item.action,
@@ -161,8 +189,9 @@ final class CommandBarViewModel {
             }
         }
 
-        // File search
-        if let searchResults = try? await searchService?.search(query: query), !Task.isCancelled {
+        // File search — strip command prefixes so "find readme.md" searches for "readme.md"
+        let fileQuery = stripCommandPrefix(query)
+        if let searchResults = try? await searchService?.search(query: fileQuery), !Task.isCancelled {
             fileResults = searchResults.map { result in
                 SearchResultItem(
                     id: UUID(),
@@ -213,6 +242,20 @@ final class CommandBarViewModel {
         results = Array(merged.prefix(20))
         selectedIndex = 0
         isLoading = false
+    }
+
+    // MARK: - Query Helpers
+
+    /// Strip command prefixes like "find", "open", "search" so file search gets clean terms
+    private func stripCommandPrefix(_ query: String) -> String {
+        let prefixes = ["find ", "search ", "locate ", "open ", "launch ", "start ", "run ", "exec ", "execute "]
+        let lower = query.lowercased()
+        for prefix in prefixes {
+            if lower.hasPrefix(prefix) {
+                return String(query.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return query
     }
 
     // MARK: - Display Helpers
